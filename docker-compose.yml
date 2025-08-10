@@ -1,0 +1,39 @@
+services:
+  bot:
+    image: debian
+    volumes:
+      - ./:/app
+      - /etc/machine-id:/etc/machine-id
+      - /etc/ssl/certs:/etc/ssl/certs
+    command: "/app/bin/bot-linux"
+    environment:
+      CLIENT_ID: ${CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      BOT_TOKEN: ${BOT_TOKEN}
+      BASIC_DIR: /app/books
+  server:
+    image: debian
+    volumes:
+      - ./:/app
+      - /etc/machine-id:/etc/machine-id
+      - /etc/ssl/certs:/etc/ssl/certs
+    command: "/app/bin/server-linux"
+    ports:
+      - 8080:8080
+    environment:
+      CLIENT_ID: ${CLIENT_ID}
+      CLIENT_SECRET: ${CLIENT_SECRET}
+      BOT_TOKEN: ${BOT_TOKEN}
+      DIR: /app/http_books
+      BASIC_DIR: /app/books
+  samba:
+    image: dockurr/samba
+    environment:
+      NAME: "RedditBooks"
+      USER: "bookworm"
+      PASS: ${SMB_PASS}
+    ports:
+      - 445:445
+    volumes:
+      - ./books:/storage
+    restart: always

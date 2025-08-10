@@ -1,0 +1,32 @@
+version: 3
+
+tasks:
+  runcli:
+    desc: test, build and run cli
+    deps:
+      - buildcli
+    cmd: ./bins/cli
+
+  watch:
+    watch: true
+    sources:
+      - "**/*.go"
+    cmds:
+      - task: buildserver
+      - ./bins/server
+
+  buildcli:
+    desc: build cli binary
+    cmd: go build -v -o ./bins/ ./cmd/cli
+
+  buildserver:
+    desc: build server binary
+    cmd: go build -v -o ./bins/ ./cmd/server
+
+  buildbot:
+    desc: build telegram bot
+    cmd: go build -v -o ./bins/ ./cmd/bot
+
+  runtests:
+    internal: true
+    cmd: go test -v ./...

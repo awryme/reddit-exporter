@@ -1,0 +1,1 @@
+- add cli logging each exported url
