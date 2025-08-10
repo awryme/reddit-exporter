@@ -17,6 +17,6 @@ FROM alpine as runner
 COPY --from=openssl /etc/*.crt /etc/ssl/certs/
 COPY --from=openssl /etc/machine-id /etc/machine-id 
 COPY --from=builder /app/server /app/server
-ENV DIR = /app/http_books
-ENV BASIC_DIR = /app/books
+ENV DIR /app/http_books
+ENV BASIC_DIR /app/books
 ENTRYPOINT [ "/app/server" ]
