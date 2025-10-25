@@ -54,6 +54,9 @@ func (app *App) Run() error {
 
 	b, err := bot.New(app.BotToken,
 		bot.WithDefaultHandler(handler(logf, exp, memstore)),
+		bot.WithErrorsHandler(func(err error) {
+			logf("error from bot", slogf.Error(err))
+		}),
 	)
 	if err != nil {
 		return fmt.Errorf("create new bot: %w", err)
@@ -82,11 +85,11 @@ func handler(logf slogf.Logf, exp *redditexporter.Exporter, store *MemoryBookSto
 		}
 
 		if update == nil {
-			sendText("error: update is nil")
+			logf("error: update is nil")
 			return
 		}
 		if update.Message == nil {
-			sendText("error: update.message is nil")
+			logf("error: update.message is nil", slog.Int64("update_id", update.ID))
 			return
 		}
 		lines := strings.Split(update.Message.Text, "\n")
