@@ -55,7 +55,7 @@ func (app *App) Run() error {
 	b, err := bot.New(app.BotToken,
 		bot.WithDefaultHandler(handler(logf, exp, memstore)),
 		bot.WithErrorsHandler(func(err error) {
-			logf("error from bot", slogf.Error(err))
+			logf("internal error from bot", slogf.Error(err))
 		}),
 	)
 	if err != nil {
