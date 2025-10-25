@@ -74,9 +74,19 @@ func main() {
 
 func handler(logf slogf.Logf, exp *redditexporter.Exporter, store *MemoryBookStore) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
+		if update == nil {
+			logf("error: update is nil")
+			return
+		}
+		msg := firstNonNil(update.Message, update.EditedMessage, update.BusinessMessage, update.EditedBusinessMessage)
+		if msg == nil {
+			logf("error: update message is nil", slog.Int64("update_id", update.ID))
+			return
+		}
+
 		sendText := func(text string) {
 			_, err := b.SendMessage(ctx, &bot.SendMessageParams{
-				ChatID: update.Message.Chat.ID,
+				ChatID: msg.Chat.ID,
 				Text:   text,
 			})
 			if err != nil {
@@ -84,15 +94,7 @@ func handler(logf slogf.Logf, exp *redditexporter.Exporter, store *MemoryBookSto
 			}
 		}
 
-		if update == nil {
-			logf("error: update is nil")
-			return
-		}
-		if update.Message == nil {
-			logf("error: update.message is nil", slog.Int64("update_id", update.ID))
-			return
-		}
-		lines := strings.Split(update.Message.Text, "\n")
+		lines := strings.Split(msg.Text, "\n")
 		urls := make([]*url.URL, 0, len(lines))
 		for _, line := range lines {
 			text := strings.TrimSpace(line)
@@ -121,7 +123,7 @@ func handler(logf slogf.Logf, exp *redditexporter.Exporter, store *MemoryBookSto
 			}
 
 			_, err := b.SendDocument(ctx, &bot.SendDocumentParams{
-				ChatID: update.Message.Chat.ID,
+				ChatID: msg.Chat.ID,
 				Document: &models.InputFileUpload{
 					Filename: book.Title + "." + book.Format,
 					Data:     book.Data,
@@ -137,4 +139,14 @@ func handler(logf slogf.Logf, exp *redditexporter.Exporter, store *MemoryBookSto
 
 		sendText("Done. ")
 	}
+}
+
+func firstNonNil[T any](values ...*T) *T {
+	for _, v := range values {
+		if v != nil {
+			return v
+		}
+	}
+
+	return nil
 }
