@@ -7,10 +7,10 @@ import (
 	"os"
 
 	"github.com/alecthomas/kong"
+	"github.com/awryme/reddit-exporter/bookencoding"
 	"github.com/awryme/reddit-exporter/httpexporter"
+	"github.com/awryme/reddit-exporter/redditclient"
 	"github.com/awryme/reddit-exporter/redditexporter"
-	"github.com/awryme/reddit-exporter/redditexporter/epubencoder"
-	"github.com/awryme/reddit-exporter/redditexporter/redditclient"
 	"github.com/awryme/slogf"
 )
 
@@ -29,31 +29,30 @@ func (app *App) Run() error {
 
 	listen := netip.MustParseAddrPort(fmt.Sprintf("0.0.0.0:%d", app.Port))
 
-	client := redditclient.New(log,
-		app.ClientID,
-		app.ClientSecret,
-		redditclient.NewMemoryTokenStore(),
-	)
-
 	fsStore, err := NewFsBookStore(app.Dir)
 	if err != nil {
 		return fmt.Errorf("create book filestore: %w", err)
 	}
-	var store redditexporter.BookStore = fsStore
+	var bookstore redditexporter.BookStore = fsStore
 
 	if app.BasicDir != "" {
 		basicFsStore, err := redditexporter.NewBasicFsBookStore(app.BasicDir)
 		if err != nil {
 			return fmt.Errorf("init basic fs books store")
 		}
-		store = redditexporter.NewMultiStore(map[string]redditexporter.BookStore{
+		bookstore = redditexporter.NewMultiStore(map[string]redditexporter.BookStore{
 			"http_fs":  fsStore,
 			"basic_fs": basicFsStore,
 		})
 		logf("using basic fs store", slog.String("dir", app.BasicDir))
 	}
 
-	exporter := redditexporter.New(client, epubencoder.New(), store)
+	exporter := redditexporter.New(
+		redditclient.New(log, app.ClientID, app.ClientSecret, redditclient.NewMemoryTokenStore()),
+		bookencoding.NewEpub(),
+		bookstore,
+		redditexporter.NoOpImageStore,
+	)
 
 	logf("running", slog.String("addr", listen.String()))
 	svc := httpexporter.New(

@@ -3,7 +3,7 @@ package ui
 import (
 	"strings"
 
-	"github.com/awryme/reddit-exporter/httpexporter/internal/api"
+	"github.com/awryme/reddit-exporter/httpexporter/internal/routes"
 	"github.com/awryme/reddit-exporter/httpexporter/ui/css"
 	. "maragu.dev/gomponents"
 	hx "maragu.dev/gomponents-htmx"
@@ -18,14 +18,14 @@ func component(id string) Node {
 	}
 }
 
-func IndexPage(books []api.BookInfo) Node {
+func IndexPage(books []BookInfo) Node {
 	return c.HTML5(c.HTML5Props{
 		Title:       "Reddit exporter",
 		Description: "reddit exporter service",
 		Language:    "en",
 		Head: []Node{
-			Link(Rel("stylesheet"), Href(api.FmtRouteStatic("matcha.css"))),
-			Script(Type("module"), Src(api.FmtRouteStatic("htmx.min.js"))),
+			Link(Rel("stylesheet"), Href(routes.FmtStatic("matcha.css"))),
+			Script(Type("module"), Src(routes.FmtStatic("htmx.min.js"))),
 			Meta(Name("htmx-config"), Content(`{"allowNestedOobSwaps": false, "defaultSwapStyle": "none"}`)),
 		},
 
@@ -65,18 +65,18 @@ func bookInput() Node {
 		Button(
 			Text("Add"),
 			Type("submit"),
-			hx.Post(api.RouteUiExport),
+			hx.Post(routes.UiExport),
 			hx.Include("previous textarea"),
 		),
 	)
 }
 
-func bookList(books []api.BookInfo) Node {
-	bookElem := func(book api.BookInfo) Node {
+func bookList(books []BookInfo) Node {
+	bookElem := func(book BookInfo) Node {
 		filename := book.Title + "." + book.Format
 		return Div(
 			A(
-				Href(api.FmtRouteDownload(book.ID, filename)),
+				Href(routes.FmtDownload(book.ID, filename)),
 				Target("_blank"),
 				Download(filename),
 				Text(filename),

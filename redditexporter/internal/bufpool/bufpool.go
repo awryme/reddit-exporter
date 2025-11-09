@@ -11,15 +11,6 @@ var bufferPool = &sync.Pool{
 	},
 }
 
-func GetBuffer() *bytes.Buffer {
-	return bufferPool.Get().(*bytes.Buffer)
-}
-
-func PutBuffer(b *bytes.Buffer) {
-	b.Reset()
-	bufferPool.Put(b)
-}
-
 type Buffer struct {
 	*bytes.Buffer
 }

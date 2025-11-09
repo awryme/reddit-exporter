@@ -5,14 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 )
 
 type JsonKind string
 
 const (
 	KindListing JsonKind = "Listing"
-	KingPost    JsonKind = "t3"
+	KindPost    JsonKind = "t3"
 )
 
 type JsonListing struct {
@@ -25,15 +24,17 @@ type JsonListing struct {
 type JsonPost struct {
 	Kind JsonKind
 	Data struct {
-		Title    string
-		Selftext string
-		Selfhtml string `json:"selftext_html"`
-		Id       string
+		Title     string
+		Selftext  string
+		Selfhtml  string `json:"selftext_html"`
+		Id        string
+		Thumbnail string
+		Url       string
 	}
 }
 
-func jsonGetPost(httpClient *http.Client, url *url.URL, token string) ([]JsonListing, error) {
-	req, err := http.NewRequest(http.MethodGet, url.String(), nil)
+func jsonGetPost(httpClient *http.Client, url, token string) ([]JsonListing, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create http request: %w", err)
 	}

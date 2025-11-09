@@ -6,20 +6,28 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/awryme/reddit-exporter/httpexporter/internal/api"
+	"github.com/awryme/reddit-exporter/httpexporter/internal/routes"
 	"github.com/awryme/reddit-exporter/httpexporter/ui/static"
 	"github.com/awryme/reddit-exporter/pkg/xhttp/render"
+	"github.com/awryme/reddit-exporter/redditexporter"
 	"github.com/go-chi/chi/v5"
 )
 
+type BookInfo = struct {
+	ID     string
+	Title  string
+	Format string
+	Size   int64
+}
+
 type BookStore interface {
-	ListBooks() ([]api.BookInfo, error)
+	ListBooks() ([]BookInfo, error)
 	DownloadBook(id string, w io.Writer) error
 	GetSize(id string) (int64, error)
 }
 
 type Exporter interface {
-	ExportURL(u ...*url.URL) ([]string, error)
+	ExportURLs(u ...*url.URL) (resp redditexporter.Response, err error)
 }
 
 type UI struct {
@@ -53,7 +61,7 @@ type HandleParams struct {
 }
 
 func (ui *UI) indexHandler() (string, string, http.HandlerFunc) {
-	return http.MethodGet, api.RouteIndexPage, func(w http.ResponseWriter, r *http.Request) {
+	return http.MethodGet, routes.IndexPage, func(w http.ResponseWriter, r *http.Request) {
 		ctx := render.New(w, r)
 
 		books, err := ui.store.ListBooks()
@@ -66,11 +74,11 @@ func (ui *UI) indexHandler() (string, string, http.HandlerFunc) {
 }
 
 func (ui *UI) exportHandler() (string, string, http.HandlerFunc) {
-	return http.MethodPost, api.RouteUiExport, handleExportUrls(ui.exporter, ui.store)
+	return http.MethodPost, routes.UiExport, handleExportUrls(ui.exporter, ui.store)
 }
 
 func (ui *UI) downloadHandler() (string, string, http.HandlerFunc) {
-	route := api.FmtRouteDownload("{id}", "*")
+	route := routes.FmtDownload("{id}", "*")
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx := render.New(w, r)
 		id := chi.URLParam(r, "id")

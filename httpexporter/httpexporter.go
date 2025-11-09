@@ -6,12 +6,17 @@ import (
 	"net/netip"
 	"net/url"
 
-	"github.com/awryme/reddit-exporter/httpexporter/internal/api"
 	"github.com/awryme/reddit-exporter/httpexporter/ui"
+	"github.com/awryme/reddit-exporter/redditexporter"
 	"github.com/go-chi/chi/v5"
 )
 
-type BookInfo = api.BookInfo
+type BookInfo = struct {
+	ID     string
+	Title  string
+	Format string
+	Size   int64
+}
 
 type BookStore interface {
 	ListBooks() ([]BookInfo, error)
@@ -20,7 +25,7 @@ type BookStore interface {
 }
 
 type Exporter interface {
-	ExportURL(urls ...*url.URL) ([]string, error)
+	ExportURLs(urls ...*url.URL) (resp redditexporter.Response, err error)
 }
 
 type Service struct {

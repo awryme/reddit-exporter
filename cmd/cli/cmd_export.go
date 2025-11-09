@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/awryme/reddit-exporter/bookencoding"
+	"github.com/awryme/reddit-exporter/redditclient"
 	"github.com/awryme/reddit-exporter/redditexporter"
-	"github.com/awryme/reddit-exporter/redditexporter/epubencoder"
-	"github.com/awryme/reddit-exporter/redditexporter/redditclient"
 	"github.com/awryme/slogf"
 )
 
@@ -32,18 +32,16 @@ func (cmd *ExportCmd) Run() error {
 	tokenfile := filepath.Join(cmd.SecretsDir, tokenFileName)
 	tokenstore := redditclient.NewFileTokenStore(tokenfile)
 
-	client := redditclient.New(log, creds.ClientID, creds.ClientSecret, tokenstore)
-	encoder := epubencoder.New()
-
-	store, err := redditexporter.NewBasicFsBookStore(cmd.Dir)
+	bookstore, err := redditexporter.NewBasicFsBookStore(cmd.Dir)
 	if err != nil {
 		return fmt.Errorf("create book file store: %w", err)
 	}
 
 	exporter := redditexporter.New(
-		client,
-		encoder,
-		store,
+		redditclient.New(log, creds.ClientID, creds.ClientSecret, tokenstore),
+		bookencoding.NewEpub(),
+		bookstore,
+		redditexporter.NoOpImageStore,
 	)
 
 	urls, err := parseUrls(cmd.Urls)
@@ -51,7 +49,7 @@ func (cmd *ExportCmd) Run() error {
 		return fmt.Errorf("parse input urls: %w", err)
 	}
 
-	_, err = exporter.ExportURL(urls...)
+	_, err = exporter.ExportURLs(urls...)
 	return err
 }
 

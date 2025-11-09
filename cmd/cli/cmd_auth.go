@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/awryme/reddit-exporter/redditexporter/redditclient"
+	"github.com/awryme/reddit-exporter/redditclient"
 	"github.com/awryme/slogf"
 )
 
@@ -31,7 +31,7 @@ func (cmd *AuthCmd) Run() error {
 
 	tokenstore := redditclient.NewFileTokenStore(tokenfile)
 	auth := redditclient.NewAuth(log, creds.ClientID, creds.ClientSecret, tokenstore)
-	_, err = auth.Auth()
+	_, err = auth.ForceAuth()
 	if err != nil {
 		return fmt.Errorf("auth app on reddit: %w", err)
 	}

@@ -8,8 +8,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/awryme/reddit-exporter/redditexporter/internal/api"
 )
 
 // reddit domains
@@ -19,7 +17,14 @@ const (
 	domainRedditOauth = "oauth.reddit.com"
 )
 
-type Post = api.Post
+type Post = struct {
+	Title string
+	Html  string
+}
+
+type Comment = struct {
+	Url string
+}
 
 type Client struct {
 	httpClient *http.Client
@@ -32,6 +37,66 @@ func New(log slog.Handler, clientID string, clientSecret string, tokenStore Toke
 	return &Client{httpClient, auth}
 }
 
+func (cli *Client) GetPostByID(subreddit, postID string) (*Post, error) {
+	token, err := cli.auth.Auth()
+	if err != nil {
+		return nil, fmt.Errorf("auth new token: %w", err)
+	}
+
+	url := fmt.Sprintf("https://%s/r/%s/comments/%s", domainRedditOauth, subreddit, postID)
+	listings, err := jsonGetPost(cli.httpClient, url, token)
+	if err != nil {
+		return nil, fmt.Errorf("get json post: %w", err)
+	}
+	for _, list := range listings {
+		if list.Kind != KindListing {
+			return nil, fmt.Errorf("listing kind is wrong (expected = %s, got = %s)", KindListing, list.Kind)
+		}
+		for _, post := range list.Data.Children {
+			if post.Kind != KindPost {
+				continue
+			}
+
+			data := post.Data
+			return &Post{
+				Title: data.Title,
+				Html:  html.UnescapeString(data.Selfhtml),
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("post not found in response")
+}
+
+func (cli *Client) GetCommentByID(subreddit, postID, commentID string) (*Post, error) {
+	token, err := cli.auth.Auth()
+	if err != nil {
+		return nil, fmt.Errorf("auth new token: %w", err)
+	}
+
+	url := fmt.Sprintf("https://%s/r/%s/comments/%s", domainRedditOauth, subreddit, postID)
+	listings, err := jsonGetPost(cli.httpClient, url, token)
+	if err != nil {
+		return nil, fmt.Errorf("get json post: %w", err)
+	}
+	for _, list := range listings {
+		if list.Kind != KindListing {
+			return nil, fmt.Errorf("listing kind is wrong (expected = %s, got = %s)", KindListing, list.Kind)
+		}
+		for _, post := range list.Data.Children {
+			if post.Kind != KindPost {
+				continue
+			}
+
+			data := post.Data
+			return &Post{
+				Title: data.Title,
+				Html:  html.UnescapeString(data.Selfhtml),
+			}, nil
+		}
+	}
+	return nil, fmt.Errorf("post not found in response")
+}
+
 func (cli *Client) GetPostFromURL(u *url.URL) (Post, error) {
 	u, err := transformURL(u)
 	if err != nil {
@@ -42,7 +107,7 @@ func (cli *Client) GetPostFromURL(u *url.URL) (Post, error) {
 		return Post{}, fmt.Errorf("auth new token: %w", err)
 	}
 
-	listings, err := jsonGetPost(cli.httpClient, u, token)
+	listings, err := jsonGetPost(cli.httpClient, u.String(), token)
 	if err != nil {
 		return Post{}, fmt.Errorf("get json post: %w", err)
 	}
@@ -51,14 +116,15 @@ func (cli *Client) GetPostFromURL(u *url.URL) (Post, error) {
 			return Post{}, fmt.Errorf("listing kind is wrong (expected = %s, got = %s)", KindListing, list.Kind)
 		}
 		for _, post := range list.Data.Children {
-			if post.Kind == KingPost {
-				data := post.Data
-				rawhtml := html.UnescapeString(data.Selfhtml)
-				return Post{
-					Title: data.Title,
-					Html:  rawhtml,
-				}, nil
+			if post.Kind != KindPost {
+				continue
 			}
+
+			data := post.Data
+			return Post{
+				Title: data.Title,
+				Html:  html.UnescapeString(data.Selfhtml),
+			}, nil
 		}
 	}
 	return Post{}, fmt.Errorf("post not found in response")
