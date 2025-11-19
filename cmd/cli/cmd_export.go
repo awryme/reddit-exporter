@@ -2,8 +2,8 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,17 +11,21 @@ import (
 	"github.com/awryme/reddit-exporter/bookencoding"
 	"github.com/awryme/reddit-exporter/redditclient"
 	"github.com/awryme/reddit-exporter/redditexporter"
+	"github.com/awryme/reddit-exporter/redditexporter/bookstore"
+	"github.com/awryme/reddit-exporter/redditexporter/imagestore"
 	"github.com/awryme/slogf"
 )
 
 type ExportCmd struct {
 	Urls []string `arg:"" help:"urls to reddit posts, can be in @file format"`
 
-	Dir        string `help:"dir to store books" default:".data/books"`
+	Dir        string `help:"dir to store books and images" default:".data"`
 	SecretsDir string `type:"path" help:"dir to cache auth token and store creds" default:"~/.reddit-exporter/"`
 }
 
 func (cmd *ExportCmd) Run() error {
+	ctx := context.Background()
+
 	log := slogf.DefaultHandler(os.Stdout)
 
 	creds, err := ReadCredsFromFile(filepath.Join(cmd.SecretsDir, credsFileName))
@@ -32,7 +36,12 @@ func (cmd *ExportCmd) Run() error {
 	tokenfile := filepath.Join(cmd.SecretsDir, tokenFileName)
 	tokenstore := redditclient.NewFileTokenStore(tokenfile)
 
-	bookstore, err := redditexporter.NewBasicFsBookStore(cmd.Dir)
+	bookStore, err := bookstore.NewBasicFS(filepath.Join(cmd.Dir, "books"))
+	if err != nil {
+		return fmt.Errorf("create book file store: %w", err)
+	}
+
+	imageStore, err := imagestore.NewBasicFS(filepath.Join(cmd.Dir, "images"))
 	if err != nil {
 		return fmt.Errorf("create book file store: %w", err)
 	}
@@ -40,8 +49,8 @@ func (cmd *ExportCmd) Run() error {
 	exporter := redditexporter.New(
 		redditclient.New(log, creds.ClientID, creds.ClientSecret, tokenstore),
 		bookencoding.NewEpub(),
-		bookstore,
-		redditexporter.NoOpImageStore,
+		bookStore,
+		imageStore,
 	)
 
 	urls, err := parseUrls(cmd.Urls)
@@ -49,13 +58,13 @@ func (cmd *ExportCmd) Run() error {
 		return fmt.Errorf("parse input urls: %w", err)
 	}
 
-	_, err = exporter.ExportURLs(urls...)
+	_, err = exporter.ExportURLs(ctx, urls...)
 	return err
 }
 
 // custom parse to interpret '@ signed files' @
-func parseUrls(urlstrs []string) ([]*url.URL, error) {
-	urls := make([]*url.URL, 0, len(urlstrs))
+func parseUrls(urlstrs []string) ([]string, error) {
+	urls := make([]string, 0, len(urlstrs))
 	for _, u := range urlstrs {
 		parsedUrls, err := parseUrlstr(u)
 		if err != nil {
@@ -66,27 +75,23 @@ func parseUrls(urlstrs []string) ([]*url.URL, error) {
 	return urls, nil
 }
 
-func parseUrlstr(urlstr string) ([]*url.URL, error) {
+func parseUrlstr(urlstr string) ([]string, error) {
 	filename, ok := strings.CutPrefix(urlstr, "@")
 	if ok {
 		return parseFile(filename)
 	}
 
-	u, err := url.Parse(urlstr)
-	if err != nil {
-		return nil, fmt.Errorf("parse input url '%s': %w", urlstr, err)
-	}
-	return []*url.URL{u}, nil
+	return []string{urlstr}, nil
 }
 
-func parseFile(filename string) ([]*url.URL, error) {
+func parseFile(filename string) ([]string, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("open file @%s: %w", filename, err)
 	}
 	defer file.Close()
 
-	urls := make([]*url.URL, 0, 1)
+	urls := make([]string, 0, 1)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())

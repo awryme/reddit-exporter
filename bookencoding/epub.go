@@ -7,10 +7,12 @@ import (
 	"github.com/go-shiori/go-epub"
 )
 
-type BookInfo = struct {
-	Title string
-	Html  string
-}
+type (
+	Book = struct {
+		Title string
+		Html  string
+	}
+)
 
 type Epub struct{}
 
@@ -22,7 +24,7 @@ func (e Epub) Format() string {
 	return "epub"
 }
 
-func (e Epub) Encode(info BookInfo, out io.Writer) error {
+func (e Epub) Encode(info *Book, out io.Writer) error {
 	book, err := epub.NewEpub(info.Title)
 	if err != nil {
 		return fmt.Errorf("create epub '%s': %w", info.Title, err)

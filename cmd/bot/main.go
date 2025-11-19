@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/alecthomas/kong"
 	"github.com/awryme/reddit-exporter/bookencoding"
-	"github.com/awryme/reddit-exporter/pkg/urlparser"
 	"github.com/awryme/reddit-exporter/redditclient"
 	"github.com/awryme/reddit-exporter/redditexporter"
+	"github.com/awryme/reddit-exporter/redditexporter/bookstore"
+	"github.com/awryme/reddit-exporter/redditexporter/imagestore"
 	"github.com/awryme/slogf"
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
@@ -36,25 +38,25 @@ func (app *App) Run() error {
 		redditclient.NewMemoryTokenStore(),
 	)
 
-	memBookStore := NewMemoryBookStore()
-	var bookstore redditexporter.BookStore = memBookStore
+	memBookStore := bookstore.NewMemory()
+	var bookStore redditexporter.BookStore = memBookStore
 	if app.BasicDir != "" {
-		basicFsStore, err := redditexporter.NewBasicFsBookStore(app.BasicDir)
+		basicFsStore, err := bookstore.NewBasicFS(app.BasicDir)
 		if err != nil {
 			return fmt.Errorf("init basic fs books store")
 		}
-		bookstore = redditexporter.NewMultiStore(map[string]redditexporter.BookStore{
+		bookStore = bookstore.NewMultiStore(map[string]bookstore.BookStore{
 			"memory":   memBookStore,
 			"basic_fs": basicFsStore,
 		})
 		logf("using basic fs store", slog.String("dir", app.BasicDir))
 	}
 
-	imageStore := NewMemoryImageStore()
+	imageStore := imagestore.NewMemory()
 	exp := redditexporter.New(
 		client,
 		bookencoding.NewEpub(),
-		bookstore,
+		bookStore,
 		imageStore,
 	)
 
@@ -78,7 +80,7 @@ func main() {
 	ctx.FatalIfErrorf(ctx.Run())
 }
 
-func handler(logf slogf.Logf, exporter *redditexporter.Exporter, bookStore *MemoryBookStore, imageStore *MemoryImageStore) bot.HandlerFunc {
+func handler(logf slogf.Logf, exporter *redditexporter.Exporter, bookStore *bookstore.Memory, imageStore *imagestore.Memory) bot.HandlerFunc {
 	return func(ctx context.Context, b *bot.Bot, update *models.Update) {
 		if update == nil {
 			logf("error: update is nil")
@@ -100,13 +102,8 @@ func handler(logf slogf.Logf, exporter *redditexporter.Exporter, bookStore *Memo
 			}
 		}
 
-		urls, err := urlparser.SplitNewLine(msg.Text)
-		if err != nil {
-			sendText(fmt.Sprintf("error: cannot parse url from message: %v", err))
-			return
-		}
-
-		resp, err := exporter.ExportURLs(urls...)
+		urls := strings.Split(msg.Text, "\n")
+		resp, err := exporter.ExportURLs(ctx, urls...)
 		if err != nil {
 			sendText(fmt.Sprintf("error: cannot export urls: %v", err))
 			return
@@ -143,7 +140,7 @@ func handler(logf slogf.Logf, exporter *redditexporter.Exporter, bookStore *Memo
 			_, err := b.SendDocument(ctx, &bot.SendDocumentParams{
 				ChatID: msg.Chat.ID,
 				Document: &models.InputFileUpload{
-					Filename: image.Name + "." + image.Ext,
+					Filename: image.Name,
 					Data:     image.Data,
 				},
 			})

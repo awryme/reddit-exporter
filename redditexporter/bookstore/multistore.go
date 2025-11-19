@@ -1,4 +1,4 @@
-package redditexporter
+package bookstore
 
 import (
 	"bytes"
@@ -6,15 +6,19 @@ import (
 	"io"
 )
 
-type multiStore struct {
+type BookStore interface {
+	SaveBook(id, title, format string, data io.Reader) error
+}
+
+type MultiStore struct {
 	stores map[string]BookStore
 }
 
-func NewMultiStore(stores map[string]BookStore) BookStore {
-	return &multiStore{stores}
+func NewMultiStore(stores map[string]BookStore) *MultiStore {
+	return &MultiStore{stores}
 }
 
-func (ms *multiStore) SaveBook(id, title, format string, data io.Reader) error {
+func (ms *MultiStore) SaveBook(id, title, format string, data io.Reader) error {
 	byteBuf, err := io.ReadAll(data)
 	if err != nil {
 		return fmt.Errorf("read all data for multi-store: %w", err)

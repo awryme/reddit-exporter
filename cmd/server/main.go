@@ -11,6 +11,8 @@ import (
 	"github.com/awryme/reddit-exporter/httpexporter"
 	"github.com/awryme/reddit-exporter/redditclient"
 	"github.com/awryme/reddit-exporter/redditexporter"
+	"github.com/awryme/reddit-exporter/redditexporter/bookstore"
+	"github.com/awryme/reddit-exporter/redditexporter/imagestore"
 	"github.com/awryme/slogf"
 )
 
@@ -33,14 +35,14 @@ func (app *App) Run() error {
 	if err != nil {
 		return fmt.Errorf("create book filestore: %w", err)
 	}
-	var bookstore redditexporter.BookStore = fsStore
+	var bookStore redditexporter.BookStore = fsStore
 
 	if app.BasicDir != "" {
-		basicFsStore, err := redditexporter.NewBasicFsBookStore(app.BasicDir)
+		basicFsStore, err := bookstore.NewBasicFS(app.BasicDir)
 		if err != nil {
 			return fmt.Errorf("init basic fs books store")
 		}
-		bookstore = redditexporter.NewMultiStore(map[string]redditexporter.BookStore{
+		bookStore = bookstore.NewMultiStore(map[string]bookstore.BookStore{
 			"http_fs":  fsStore,
 			"basic_fs": basicFsStore,
 		})
@@ -50,8 +52,8 @@ func (app *App) Run() error {
 	exporter := redditexporter.New(
 		redditclient.New(log, app.ClientID, app.ClientSecret, redditclient.NewMemoryTokenStore()),
 		bookencoding.NewEpub(),
-		bookstore,
-		redditexporter.NoOpImageStore,
+		bookStore,
+		imagestore.NoOpImageStore,
 	)
 
 	logf("running", slog.String("addr", listen.String()))

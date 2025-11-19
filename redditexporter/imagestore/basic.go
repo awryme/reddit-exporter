@@ -1,4 +1,4 @@
-package redditexporter
+package imagestore
 
 import (
 	"fmt"
@@ -8,20 +8,20 @@ import (
 	"strings"
 )
 
-type BasicFsBookStore struct {
+type BasicFS struct {
 	dir string
 }
 
-func NewBasicFsBookStore(dir string) (*BasicFsBookStore, error) {
+func NewBasicFS(dir string) (*BasicFS, error) {
 	err := os.MkdirAll(dir, os.ModePerm)
 	if err != nil {
 		return nil, fmt.Errorf("make store dir: %w", err)
 	}
-	return &BasicFsBookStore{dir: dir}, nil
+	return &BasicFS{dir: dir}, nil
 }
 
-func (store *BasicFsBookStore) SaveBook(id, title, format string, data io.Reader) error {
-	filename := title + "." + format
+func (store *BasicFS) SaveImage(id, name string, data io.Reader) error {
+	filename := name
 	filename = strings.ReplaceAll(filename, "/", "_")
 	fullname := filepath.Join(store.dir, filename)
 

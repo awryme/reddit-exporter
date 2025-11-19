@@ -1,24 +1,20 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 
-	"github.com/awryme/reddit-exporter/pkg/urlparser"
 	"github.com/awryme/reddit-exporter/pkg/xhttp/render"
 )
 
 const exportUrlsName = "urls"
 
 func handleExportUrls(exporter Exporter, store BookStore) http.HandlerFunc {
-	exportAndList := func(urlsData string) ([]BookInfo, error) {
-		urls, err := urlparser.SplitNewLine(urlsData)
-		if err != nil {
-			return nil, fmt.Errorf("parse urls text: %w", err)
-		}
-
-		_, err = exporter.ExportURLs(urls...)
+	exportAndList := func(ctx context.Context, urlsData string) ([]BookInfo, error) {
+		urls := strings.Split(urlsData, "\n")
+		_, err := exporter.ExportURLs(ctx, urls...)
 		if err != nil {
 			return nil, fmt.Errorf("export reddit url: %w", err)
 		}
@@ -39,7 +35,7 @@ func handleExportUrls(exporter Exporter, store BookStore) http.HandlerFunc {
 			return
 		}
 
-		books, err := exportAndList(urlsData)
+		books, err := exportAndList(ctx.Context(), urlsData)
 		if err != nil {
 			ctx.Render(
 				statusBar(fmt.Sprintf("export books: %v", err.Error())),

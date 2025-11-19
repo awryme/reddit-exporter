@@ -5,26 +5,33 @@ import (
 	"html"
 	"log/slog"
 	"net/http"
-	"net/url"
-	"strings"
-	"time"
+
+	"github.com/awryme/reddit-exporter/pkg/xhttp"
 )
 
 // reddit domains
 const (
-	domainReddit      = "reddit.com"
-	domainRedditWWW   = "www.reddit.com"
-	domainRedditOauth = "oauth.reddit.com"
+	domainReddit       = "reddit.com"
+	domainRedditWWW    = "www.reddit.com"
+	domainRedditOauth  = "oauth.reddit.com"
+	domainRedditImages = "i.redd.it"
 )
 
-type Post = struct {
-	Title string
-	Html  string
-}
+type (
+	Post = struct {
+		Title string
+		Html  string
+	}
 
-type Comment = struct {
-	Url string
-}
+	ImageInfo = struct {
+		Name string
+		Url  string
+	}
+
+	Comment = struct {
+		Images []ImageInfo
+	}
+)
 
 type Client struct {
 	httpClient *http.Client
@@ -33,172 +40,73 @@ type Client struct {
 
 func New(log slog.Handler, clientID string, clientSecret string, tokenStore TokenStore) *Client {
 	auth := NewAuth(log, clientID, clientSecret, tokenStore)
-	httpClient := newHttpClient()
+	httpClient := xhttp.NewClient()
 	return &Client{httpClient, auth}
 }
 
-func (cli *Client) GetPostByID(subreddit, postID string) (*Post, error) {
-	token, err := cli.auth.Auth()
-	if err != nil {
-		return nil, fmt.Errorf("auth new token: %w", err)
-	}
-
-	url := fmt.Sprintf("https://%s/r/%s/comments/%s", domainRedditOauth, subreddit, postID)
-	listings, err := jsonGetPost(cli.httpClient, url, token)
+func (cli *Client) GetPostByID(subreddit, id string) (*Post, error) {
+	data, err := getListings[JsonPostData](cli, subreddit, KindPost, id)
 	if err != nil {
 		return nil, fmt.Errorf("get json post: %w", err)
 	}
-	for _, list := range listings {
-		if list.Kind != KindListing {
-			return nil, fmt.Errorf("listing kind is wrong (expected = %s, got = %s)", KindListing, list.Kind)
-		}
-		for _, post := range list.Data.Children {
-			if post.Kind != KindPost {
-				continue
-			}
-
-			data := post.Data
-			return &Post{
-				Title: data.Title,
-				Html:  html.UnescapeString(data.Selfhtml),
-			}, nil
-		}
-	}
-	return nil, fmt.Errorf("post not found in response")
+	return &Post{
+		Title: data.Title,
+		Html:  html.UnescapeString(data.Selfhtml),
+	}, nil
 }
 
-func (cli *Client) GetCommentByID(subreddit, postID, commentID string) (*Post, error) {
-	token, err := cli.auth.Auth()
-	if err != nil {
-		return nil, fmt.Errorf("auth new token: %w", err)
-	}
-
-	url := fmt.Sprintf("https://%s/r/%s/comments/%s", domainRedditOauth, subreddit, postID)
-	listings, err := jsonGetPost(cli.httpClient, url, token)
+func (cli *Client) GetCommentByID(subreddit, id string) (*Comment, error) {
+	data, err := getListings[JsonCommentData](cli, subreddit, KindComment, id)
 	if err != nil {
 		return nil, fmt.Errorf("get json post: %w", err)
 	}
-	for _, list := range listings {
-		if list.Kind != KindListing {
-			return nil, fmt.Errorf("listing kind is wrong (expected = %s, got = %s)", KindListing, list.Kind)
-		}
-		for _, post := range list.Data.Children {
-			if post.Kind != KindPost {
-				continue
-			}
 
-			data := post.Data
-			return &Post{
-				Title: data.Title,
-				Html:  html.UnescapeString(data.Selfhtml),
-			}, nil
+	meta := data.MediaMetadata
+	infos := make([]ImageInfo, 0, len(meta))
+	for id, info := range meta {
+		var name string
+		switch info.Type {
+		case "image/jpeg":
+			name = fmt.Sprintf("%s.jpeg", id)
 		}
+		url := fmt.Sprintf("https://%s/%s", domainRedditImages, name)
+		infos = append(infos, ImageInfo{
+			Name: name,
+			Url:  url,
+		})
 	}
-	return nil, fmt.Errorf("post not found in response")
+
+	return &Comment{
+		Images: infos,
+	}, nil
 }
 
-func (cli *Client) GetPostFromURL(u *url.URL) (Post, error) {
-	u, err := transformURL(u)
-	if err != nil {
-		return Post{}, fmt.Errorf("transform reddit url: %w", err)
-	}
+func getListings[Data any](cli *Client, subreddit string, kind JsonKind, id string) (Data, error) {
+	var data Data
+	fullID := fmt.Sprintf("%s_%s", kind, id)
+
 	token, err := cli.auth.Auth()
 	if err != nil {
-		return Post{}, fmt.Errorf("auth new token: %w", err)
+		return data, fmt.Errorf("auth new token: %w", err)
 	}
 
-	listings, err := jsonGetPost(cli.httpClient, u.String(), token)
+	url := fmt.Sprintf("https://%s/r/%s/api/info?id=%s", domainRedditOauth, subreddit, fullID)
+	listing, err := jsonGetPost[Data](cli.httpClient, url, token)
 	if err != nil {
-		return Post{}, fmt.Errorf("get json post: %w", err)
+		return data, fmt.Errorf("get json post: %w", err)
 	}
-	for _, list := range listings {
-		if list.Kind != KindListing {
-			return Post{}, fmt.Errorf("listing kind is wrong (expected = %s, got = %s)", KindListing, list.Kind)
+
+	if listing.Kind != KindListing {
+		return data, fmt.Errorf("listing kind is wrong (expected = %s, got = %s)", KindListing, listing.Kind)
+	}
+
+	for _, post := range listing.Data.Children {
+		if post.Kind != kind {
+			continue
 		}
-		for _, post := range list.Data.Children {
-			if post.Kind != KindPost {
-				continue
-			}
 
-			data := post.Data
-			return Post{
-				Title: data.Title,
-				Html:  html.UnescapeString(data.Selfhtml),
-			}, nil
-		}
-	}
-	return Post{}, fmt.Errorf("post not found in response")
-}
-
-func transformURL(u *url.URL) (*url.URL, error) {
-	switch u.Hostname() {
-	case domainRedditOauth:
-		return u, nil
-	case domainReddit, domainRedditWWW:
-		return transformRedditURL(u)
-	}
-	return nil, fmt.Errorf("unknow domain: %s", u.Hostname())
-}
-
-func transformRedditURL(u *url.URL) (*url.URL, error) {
-	path := strings.Trim(u.Path, "/")
-	errUnknownUrl := fmt.Errorf("unknown path url format (path = %s)", path)
-
-	parts := strings.Split(path, "/")
-
-	// r/HFY/comments/1kcjsc3/oocs_into_a_wider_galaxy_part_321/
-	if len(parts) < 4 {
-		return nil, fmt.Errorf("url parts.len != 4: %w", errUnknownUrl)
-	}
-	if parts[0] != "r" {
-		return nil, fmt.Errorf("url[0] != 'r': %w", errUnknownUrl)
+		return post.Data, nil
 	}
 
-	switch parts[2] {
-	case "comments":
-	case "s":
-		newurl, err := resolveShortUrl(u)
-		if err != nil {
-			return nil, fmt.Errorf("resolve short url: %w", err)
-		}
-		transformed, err := transformURL(newurl)
-		if err != nil {
-			return nil, fmt.Errorf("transform redirect url: %w", err)
-		}
-		return transformed, nil
-	default:
-		return nil, fmt.Errorf("url[2] is incorrect: %w", errUnknownUrl)
-	}
-
-	subName := parts[1]
-	postID := parts[3]
-
-	return url.Parse(fmt.Sprintf("https://%s/r/%s/comments/%s", domainRedditOauth, subName, postID))
-}
-
-func resolveShortUrl(u *url.URL) (*url.URL, error) {
-	cli := &http.Client{
-		Timeout: time.Second * 10,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			return http.ErrUseLastResponse
-		},
-	}
-
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("create new redirect request: %w", err)
-	}
-
-	res, err := cli.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("make redirect request: %w", err)
-	}
-	defer res.Body.Close()
-
-	newurl, err := res.Location()
-	if err != nil {
-		return nil, fmt.Errorf("resolve redirect response: %w", err)
-	}
-
-	return newurl, nil
+	return data, fmt.Errorf("post %s not found in response", fullID)
 }

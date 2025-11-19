@@ -1,32 +1,40 @@
 package httpexporter
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/netip"
-	"net/url"
 
 	"github.com/awryme/reddit-exporter/httpexporter/ui"
-	"github.com/awryme/reddit-exporter/redditexporter"
 	"github.com/go-chi/chi/v5"
 )
 
-type BookInfo = struct {
-	ID     string
-	Title  string
-	Format string
-	Size   int64
-}
+type (
+	BookInfo = struct {
+		ID     string
+		Title  string
+		Format string
+		Size   int64
+	}
 
-type BookStore interface {
-	ListBooks() ([]BookInfo, error)
-	DownloadBook(id string, w io.Writer) error
-	GetSize(id string) (int64, error)
-}
+	BookStore interface {
+		ListBooks() ([]BookInfo, error)
+		DownloadBook(id string, w io.Writer) error
+		GetSize(id string) (int64, error)
+	}
+)
 
-type Exporter interface {
-	ExportURLs(urls ...*url.URL) (resp redditexporter.Response, err error)
-}
+type (
+	ExporterResponse = struct {
+		BookIds  []string
+		ImageIds []string
+	}
+
+	Exporter interface {
+		ExportURLs(ctx context.Context, urls ...string) (resp *ExporterResponse, err error)
+	}
+)
 
 type Service struct {
 	listen   netip.AddrPort

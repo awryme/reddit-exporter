@@ -1,33 +1,39 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 
 	"github.com/awryme/reddit-exporter/httpexporter/internal/routes"
 	"github.com/awryme/reddit-exporter/httpexporter/ui/static"
 	"github.com/awryme/reddit-exporter/pkg/xhttp/render"
-	"github.com/awryme/reddit-exporter/redditexporter"
 	"github.com/go-chi/chi/v5"
 )
 
-type BookInfo = struct {
-	ID     string
-	Title  string
-	Format string
-	Size   int64
-}
+type (
+	BookInfo = struct {
+		ID     string
+		Title  string
+		Format string
+		Size   int64
+	}
 
-type BookStore interface {
-	ListBooks() ([]BookInfo, error)
-	DownloadBook(id string, w io.Writer) error
-	GetSize(id string) (int64, error)
+	BookStore interface {
+		ListBooks() ([]BookInfo, error)
+		DownloadBook(id string, w io.Writer) error
+		GetSize(id string) (int64, error)
+	}
+)
+
+type ExporterResponse = struct {
+	BookIds  []string
+	ImageIds []string
 }
 
 type Exporter interface {
-	ExportURLs(u ...*url.URL) (resp redditexporter.Response, err error)
+	ExportURLs(ctx context.Context, urls ...string) (resp *ExporterResponse, err error)
 }
 
 type UI struct {

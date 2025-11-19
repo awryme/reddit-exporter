@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/awryme/reddit-exporter/pkg/xhttp"
 	"github.com/awryme/slogf"
 	"github.com/denisbrodbeck/machineid"
 )
@@ -50,7 +51,7 @@ type AuthService struct {
 }
 
 func NewAuth(log slog.Handler, clientID string, clientSecret string, tokenStore TokenStore) *AuthService {
-	httpClient := newHttpClient()
+	httpClient := xhttp.NewClient()
 	return &AuthService{
 		clientID:     clientID,
 		clientSecret: clientSecret,

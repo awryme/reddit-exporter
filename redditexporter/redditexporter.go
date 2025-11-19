@@ -1,102 +1,192 @@
 package redditexporter
 
 import (
+	"bytes"
+	"context"
 	"fmt"
 	"io"
-	"net/url"
+	"net/http"
+	"strings"
 
-	"github.com/awryme/reddit-exporter/redditexporter/internal/bufpool"
+	"github.com/awryme/reddit-exporter/pkg/bufpool"
+	"github.com/awryme/reddit-exporter/pkg/xhttp"
 	"github.com/oklog/ulid/v2"
 )
 
-type Post = struct {
-	Title string
-	Html  string
-}
+type (
+	Post = struct {
+		Title string
+		Html  string
+	}
 
-type RedditClient interface {
-	GetPostFromURL(u *url.URL) (Post, error)
-}
+	ImageInfo = struct {
+		Name string
+		Url  string
+	}
 
-type BookEncoder interface {
-	Encode(post Post, output io.Writer) error
-	Format() string
-}
+	Comment = struct {
+		Images []ImageInfo
+	}
 
-type BookStore interface {
-	SaveBook(id, title, format string, data io.Reader) error
-}
+	RedditClient interface {
+		GetPostByID(subreddit, id string) (*Post, error)
+		GetCommentByID(subreddit, id string) (*Comment, error)
+	}
+)
 
-type ImageStore interface {
-	SaveImage(id, name, ext string, data io.Reader) error
-}
+type (
+	Book = struct {
+		Title string
+		Html  string
+	}
 
-type Response struct {
-	BookIds  []string
-	ImageIds []string
-}
+	BookEncoder interface {
+		Encode(post *Book, output io.Writer) error
+		Format() string
+	}
+)
+
+type (
+	BookStore interface {
+		SaveBook(id, title, format string, data io.Reader) error
+	}
+
+	ImageStore interface {
+		SaveImage(id, name string, data io.Reader) error
+	}
+)
 
 type Exporter struct {
-	client     RedditClient
-	encoder    BookEncoder
-	bookstore  BookStore
-	imagestore ImageStore
+	client      RedditClient
+	bookEncoder BookEncoder
+	bookstore   BookStore
+	imagestore  ImageStore
 }
 
 func New(client RedditClient, encoder BookEncoder, bookstore BookStore, imagestore ImageStore) *Exporter {
 	return &Exporter{client, encoder, bookstore, imagestore}
 }
 
-func (ex *Exporter) ExportURLs(urls ...*url.URL) (resp Response, err error) {
-	resp.BookIds = make([]string, 0, len(urls))
-	resp.ImageIds = make([]string, 0, len(urls))
+type Response = struct {
+	BookIds  []string
+	ImageIds []string
+}
 
-	for _, u := range urls {
-		respType, id, err := ex.exportURL(u)
-		if err != nil {
-			return resp, fmt.Errorf("export url '%v': %w", u, err)
+func (ex *Exporter) ExportURLs(ctx context.Context, urls ...string) (*Response, error) {
+	// todo: add logs for exporting: found image/post id, downloading url...
+
+	resp := &Response{
+		BookIds:  make([]string, 0, len(urls)),
+		ImageIds: make([]string, 0, len(urls)),
+	}
+
+	for _, url := range urls {
+		url = strings.TrimSpace(url)
+		// ignore empty lines
+		if url == "" {
+			continue
 		}
-		switch respType {
-		case responseBook:
-			resp.BookIds = append(resp.BookIds, id)
-		case responseImage:
-			resp.ImageIds = append(resp.ImageIds, id)
+
+		err := ex.exportURL(ctx, url, resp)
+		if err != nil {
+			return resp, fmt.Errorf("export url '%v': %w", url, err)
 		}
 	}
 
 	return resp, nil
 }
 
-type responseType int
-
-const (
-	responseNone = iota
-	responseBook
-	responseImage
-)
-
-func (ex *Exporter) exportURL(u *url.URL) (responseType, string, error) {
-	id := ulid.Make().String()
-
-	post, err := ex.client.GetPostFromURL(u)
+func (ex *Exporter) exportURL(ctx context.Context, url string, resp *Response) error {
+	urlInfo, err := parseUrl(url)
 	if err != nil {
-		return responseNone, "", fmt.Errorf("download reddit post from %s: %w", u.String(), err)
+		return err
+	}
+
+	if urlInfo.CommentID != "" {
+		return ex.exportComment(ctx, urlInfo.Subreddit, urlInfo.PostID, urlInfo.CommentID, resp)
+	}
+
+	return ex.exportPost(ctx, urlInfo.Subreddit, urlInfo.PostID, resp)
+}
+
+func (ex *Exporter) exportPost(ctx context.Context, subreddit, postID string, resp *Response) error {
+	post, err := ex.client.GetPostByID(subreddit, postID)
+	if err != nil {
+		return fmt.Errorf("download reddit post r/%s/%s: %w", subreddit, postID, err)
 	}
 
 	buf := bufpool.Get()
 	defer buf.Close()
 
-	//todo: save image
-
-	err = ex.encoder.Encode(post, buf)
+	// todo: replace to pointer in interface
+	err = ex.bookEncoder.Encode(post, buf)
 	if err != nil {
-		return responseNone, "", fmt.Errorf("encode post: %w", err)
+		return fmt.Errorf("encode post: %w", err)
 	}
 
-	format := ex.encoder.Format()
+	format := ex.bookEncoder.Format()
+
+	id := ulid.Make().String()
 	err = ex.bookstore.SaveBook(id, post.Title, format, buf)
 	if err != nil {
-		return responseBook, "", fmt.Errorf("save book: %w", err)
+		return fmt.Errorf("save book: %w", err)
 	}
-	return responseBook, id, nil
+
+	resp.BookIds = append(resp.BookIds, id)
+	return nil
+}
+
+func (ex *Exporter) exportComment(ctx context.Context, subreddit, postID, commentID string, resp *Response) error {
+	comment, err := ex.client.GetCommentByID(subreddit, commentID)
+	if err != nil {
+		return fmt.Errorf("get comment by id: %w", err)
+	}
+	if len(comment.Images) == 0 {
+		return fmt.Errorf("no images url in comment")
+	}
+
+	for _, info := range comment.Images {
+		err := ex.downloadImage(ctx, info, resp)
+		if err != nil {
+			return fmt.Errorf("download image (name = %s, url = %s): %w", info.Name, info.Url, err)
+		}
+	}
+
+	return nil
+}
+
+func (ex *Exporter) downloadImage(ctx context.Context, info ImageInfo, resp *Response) error {
+	client := xhttp.NewClient()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, info.Url, nil)
+	if err != nil {
+		return fmt.Errorf("create http request for reddit image: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "reddit-exporter/v1.2")
+	req.Header.Set("Accept", "image/*")
+
+	res, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send http request for reddit image: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("send http request for reddit image: bad status %d (%s)", res.StatusCode, res.Status)
+	}
+
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return fmt.Errorf("read http response body for reddit image: bad status %d (%s)", res.StatusCode, res.Status)
+	}
+
+	id := ulid.Make().String()
+	err = ex.imagestore.SaveImage(id, info.Name, bytes.NewBuffer(data))
+	if err != nil {
+		return fmt.Errorf("save book: %w", err)
+	}
+
+	resp.ImageIds = append(resp.ImageIds, id)
+	return nil
 }
