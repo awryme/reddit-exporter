@@ -1,8 +1,10 @@
 package redditclient
 
 import (
+	"context"
 	"fmt"
 	"html"
+	"io"
 	"log/slog"
 	"net/http"
 
@@ -79,6 +81,35 @@ func (cli *Client) GetCommentByID(subreddit, id string) (*Comment, error) {
 	return &Comment{
 		Images: infos,
 	}, nil
+}
+
+func (cli *Client) DownloadImage(ctx context.Context, info ImageInfo, buf io.Writer) error {
+	client := xhttp.NewClient()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, info.Url, nil)
+	if err != nil {
+		return fmt.Errorf("create http request for reddit image: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "reddit-exporter/v1.2")
+	req.Header.Set("Accept", "image/*")
+
+	res, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("send http request for reddit image: %w", err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("send http request for reddit image: bad status %d (%s)", res.StatusCode, res.Status)
+	}
+
+	_, err = io.Copy(buf, res.Body)
+	if err != nil {
+		return fmt.Errorf("copy response body to buf: %w", err)
+	}
+
+	return nil
 }
 
 func getListings[Data any](cli *Client, subreddit string, kind JsonKind, id string) (Data, error) {

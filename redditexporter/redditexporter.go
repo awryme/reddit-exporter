@@ -5,11 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"strings"
 
 	"github.com/awryme/reddit-exporter/pkg/bufpool"
-	"github.com/awryme/reddit-exporter/pkg/xhttp"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -31,6 +29,7 @@ type (
 	RedditClient interface {
 		GetPostByID(subreddit, id string) (*Post, error)
 		GetCommentByID(subreddit, id string) (*Comment, error)
+		DownloadImage(ctx context.Context, info ImageInfo, buf io.Writer) error
 	}
 )
 
@@ -146,47 +145,21 @@ func (ex *Exporter) exportComment(ctx context.Context, subreddit, postID, commen
 	}
 
 	for _, info := range comment.Images {
-		err := ex.downloadImage(ctx, info, resp)
+		// todo: add image.String func, log info, use in errorf
+		buf := bytes.NewBuffer(nil)
+		err := ex.client.DownloadImage(ctx, info, buf)
 		if err != nil {
 			return fmt.Errorf("download image (name = %s, url = %s): %w", info.Name, info.Url, err)
 		}
+
+		id := ulid.Make().String()
+		err = ex.imagestore.SaveImage(id, info.Name, buf)
+		if err != nil {
+			return fmt.Errorf("save image: %w", err)
+		}
+
+		resp.ImageIds = append(resp.ImageIds, id)
 	}
 
-	return nil
-}
-
-func (ex *Exporter) downloadImage(ctx context.Context, info ImageInfo, resp *Response) error {
-	client := xhttp.NewClient()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, info.Url, nil)
-	if err != nil {
-		return fmt.Errorf("create http request for reddit image: %w", err)
-	}
-
-	req.Header.Set("User-Agent", "reddit-exporter/v1.2")
-	req.Header.Set("Accept", "image/*")
-
-	res, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("send http request for reddit image: %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		return fmt.Errorf("send http request for reddit image: bad status %d (%s)", res.StatusCode, res.Status)
-	}
-
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return fmt.Errorf("read http response body for reddit image: bad status %d (%s)", res.StatusCode, res.Status)
-	}
-
-	id := ulid.Make().String()
-	err = ex.imagestore.SaveImage(id, info.Name, bytes.NewBuffer(data))
-	if err != nil {
-		return fmt.Errorf("save book: %w", err)
-	}
-
-	resp.ImageIds = append(resp.ImageIds, id)
 	return nil
 }
