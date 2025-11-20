@@ -27,8 +27,8 @@ type (
 	}
 
 	RedditClient interface {
-		GetPostByID(subreddit, id string) (*Post, error)
-		GetCommentByID(subreddit, id string) (*Comment, error)
+		GetPostByID(ctx context.Context, subreddit, id string) (*Post, error)
+		GetCommentByID(ctx context.Context, subreddit, id string) (*Comment, error)
 		DownloadImage(ctx context.Context, info ImageInfo, buf io.Writer) error
 	}
 )
@@ -102,14 +102,14 @@ func (ex *Exporter) exportURL(ctx context.Context, url string, resp *Response) e
 	}
 
 	if urlInfo.CommentID != "" {
-		return ex.exportComment(ctx, urlInfo.Subreddit, urlInfo.PostID, urlInfo.CommentID, resp)
+		return ex.exportComment(ctx, urlInfo.Subreddit, urlInfo.CommentID, resp)
 	}
 
 	return ex.exportPost(ctx, urlInfo.Subreddit, urlInfo.PostID, resp)
 }
 
 func (ex *Exporter) exportPost(ctx context.Context, subreddit, postID string, resp *Response) error {
-	post, err := ex.client.GetPostByID(subreddit, postID)
+	post, err := ex.client.GetPostByID(ctx, subreddit, postID)
 	if err != nil {
 		return fmt.Errorf("download reddit post r/%s/%s: %w", subreddit, postID, err)
 	}
@@ -135,8 +135,8 @@ func (ex *Exporter) exportPost(ctx context.Context, subreddit, postID string, re
 	return nil
 }
 
-func (ex *Exporter) exportComment(ctx context.Context, subreddit, postID, commentID string, resp *Response) error {
-	comment, err := ex.client.GetCommentByID(subreddit, commentID)
+func (ex *Exporter) exportComment(ctx context.Context, subreddit, commentID string, resp *Response) error {
+	comment, err := ex.client.GetCommentByID(ctx, subreddit, commentID)
 	if err != nil {
 		return fmt.Errorf("get comment by id: %w", err)
 	}

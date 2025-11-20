@@ -46,8 +46,8 @@ func New(log slog.Handler, clientID string, clientSecret string, tokenStore Toke
 	return &Client{httpClient, auth}
 }
 
-func (cli *Client) GetPostByID(subreddit, id string) (*Post, error) {
-	data, err := getListings[JsonPostData](cli, subreddit, KindPost, id)
+func (cli *Client) GetPostByID(ctx context.Context, subreddit, id string) (*Post, error) {
+	data, err := getListings[JsonPostData](ctx, cli, subreddit, KindPost, id)
 	if err != nil {
 		return nil, fmt.Errorf("get json post: %w", err)
 	}
@@ -57,8 +57,8 @@ func (cli *Client) GetPostByID(subreddit, id string) (*Post, error) {
 	}, nil
 }
 
-func (cli *Client) GetCommentByID(subreddit, id string) (*Comment, error) {
-	data, err := getListings[JsonCommentData](cli, subreddit, KindComment, id)
+func (cli *Client) GetCommentByID(ctx context.Context, subreddit, id string) (*Comment, error) {
+	data, err := getListings[JsonCommentData](ctx, cli, subreddit, KindComment, id)
 	if err != nil {
 		return nil, fmt.Errorf("get json post: %w", err)
 	}
@@ -112,7 +112,7 @@ func (cli *Client) DownloadImage(ctx context.Context, info ImageInfo, buf io.Wri
 	return nil
 }
 
-func getListings[Data any](cli *Client, subreddit string, kind JsonKind, id string) (Data, error) {
+func getListings[Data any](ctx context.Context, cli *Client, subreddit string, kind JsonKind, id string) (Data, error) {
 	var data Data
 	fullID := fmt.Sprintf("%s_%s", kind, id)
 
@@ -122,7 +122,7 @@ func getListings[Data any](cli *Client, subreddit string, kind JsonKind, id stri
 	}
 
 	url := fmt.Sprintf("https://%s/r/%s/api/info?id=%s", domainRedditOauth, subreddit, fullID)
-	listing, err := jsonGetPost[Data](cli.httpClient, url, token)
+	listing, err := jsonGetPost[Data](ctx, cli.httpClient, url, token)
 	if err != nil {
 		return data, fmt.Errorf("get json post: %w", err)
 	}

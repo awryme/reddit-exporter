@@ -1,6 +1,7 @@
 package redditclient
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,8 +41,8 @@ type JsonListing[Data any] struct {
 	}
 }
 
-func jsonGetPost[Data any](httpClient *http.Client, url, token string) (*JsonListing[Data], error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func jsonGetPost[Data any](ctx context.Context, httpClient *http.Client, url, token string) (*JsonListing[Data], error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create http request: %w", err)
 	}
