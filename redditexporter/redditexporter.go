@@ -122,10 +122,10 @@ func (ex *Exporter) exportPost(ctx context.Context, subreddit, postID string, re
 		return fmt.Errorf("encode post: %w", err)
 	}
 
+	id := ulid.Make().String()
 	title := post.Title
 	format := ex.bookEncoder.Format()
 
-	id := ulid.Make().String()
 	err = ex.bookstore.SaveBook(id, title, format, buf)
 	if err != nil {
 		return fmt.Errorf("save book: %w", err)
