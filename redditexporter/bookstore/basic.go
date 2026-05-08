@@ -21,7 +21,7 @@ func NewBasicFS(dir string) (*BasicFS, error) {
 }
 
 func (store *BasicFS) SaveBook(id, title, format string, data io.Reader) error {
-	filename := title + "." + format
+	filename := fmt.Sprintf("%s.%s.%s", title, id, format)
 	filename = strings.ReplaceAll(filename, "/", "_")
 	fullname := filepath.Join(store.dir, filename)
 

@@ -117,16 +117,16 @@ func (ex *Exporter) exportPost(ctx context.Context, subreddit, postID string, re
 	buf := bufpool.Get()
 	defer buf.Close()
 
-	// todo: replace to pointer in interface
 	err = ex.bookEncoder.Encode(post, buf)
 	if err != nil {
 		return fmt.Errorf("encode post: %w", err)
 	}
 
+	title := post.Title
 	format := ex.bookEncoder.Format()
 
 	id := ulid.Make().String()
-	err = ex.bookstore.SaveBook(id, post.Title, format, buf)
+	err = ex.bookstore.SaveBook(id, title, format, buf)
 	if err != nil {
 		return fmt.Errorf("save book: %w", err)
 	}
